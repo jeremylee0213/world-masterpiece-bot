@@ -1087,26 +1087,80 @@ function setImageBusy(isBusy) {
 }
 
 function getReinterpretationGuide(value) {
-  const level = String(value);
-  if (level === "0") {
-    return "원작 완전 유지: 원작의 구도, 인물, 배경, 색채 체계를 우선 보존하며 최소한의 보정만 적용합니다.";
+  const level = String(value || "preserve");
+  if (level === "balanced") {
+    return "2단계: 균형 재해석. 원작 구도는 유지하고 캐릭터/배경 변환을 분명하게 반영합니다.";
   }
-  if (level === "20") {
-    return "원작 거의 유지: 원작 중심의 표현을 유지하되 캐릭터와 배경 요소를 제한적으로 조정합니다.";
+  if (level === "bold") {
+    return "3단계: 강한 재해석. 원작은 뼈대만 유지하고 캐릭터/배경 스타일을 우선 적용합니다.";
   }
-  if (level === "40") {
-    return "원작 많이 유지: 원작 비중을 높게 유지하면서 스타일 변환 요소를 보조적으로 반영합니다.";
-  }
-  if (level === "70") {
-    return "재해석 수준: 원작 구도를 유지하면서 캐릭터와 배경 스타일을 명확하게 재구성합니다.";
-  }
-  return "강한 재해석: 원작의 핵심 모티프만 유지하고 전체 표현을 새로운 스타일 중심으로 전환합니다.";
+  return "1단계: 원작 중심. 원작 비중을 높게 유지하고 캐릭터/배경 전환은 절제합니다.";
 }
 
 function updateReinterpretationUI(value = ui.reinterpretationInput.value) {
   if (ui.reinterpretationHelp) {
     ui.reinterpretationHelp.textContent = getReinterpretationGuide(value);
   }
+}
+
+function getReinterpretationProfile(level, language = "en") {
+  const mode = String(level || "preserve");
+  const isEnglish = language === "en";
+
+  if (mode === "balanced") {
+    return {
+      mode,
+      label: isEnglish ? "Balanced reinterpretation" : "균형 재해석",
+      guide: isEnglish
+        ? "Preserve source composition while clearly applying selected character and background conversions."
+        : "원작 구도를 유지하면서 선택한 캐릭터/배경 변환을 명확히 반영합니다.",
+      weightClause: isEnglish
+        ? "transformation weight: original 55%, reinterpretation 45%"
+        : "변환 비중: 원작 55%, 재해석 45%",
+      priorityClause: isEnglish
+        ? "priority rule: keep composition skeleton, but update subject identity and environment style decisively"
+        : "우선순위: 구도 골격은 유지하되 인물 정체성과 배경 스타일은 확실히 전환",
+      directive: isEnglish
+        ? "Maintain core composition and camera flow, but visibly transform character design, environment styling, and narrative mood."
+        : "핵심 구도와 시선 흐름은 유지하되, 캐릭터 디자인·배경 연출·서사 분위기는 눈에 띄게 전환합니다."
+    };
+  }
+
+  if (mode === "bold") {
+    return {
+      mode,
+      label: isEnglish ? "Bold reinterpretation" : "강한 재해석",
+      guide: isEnglish
+        ? "Keep only the source composition DNA and prioritize character/background style conversion."
+        : "원작의 구도 DNA만 유지하고 캐릭터/배경 스타일 전환을 우선 적용합니다.",
+      weightClause: isEnglish
+        ? "transformation weight: original 25%, reinterpretation 75%"
+        : "변환 비중: 원작 25%, 재해석 75%",
+      priorityClause: isEnglish
+        ? "priority rule: selected character identity and background worldbuilding override original stylistic details"
+        : "우선순위: 선택한 캐릭터 정체성과 배경 세계관이 원작 세부 화풍보다 우선",
+      directive: isEnglish
+        ? "Retain only structural composition anchors from the source and strongly replace styling, color treatment, texture language, and atmosphere with the selected reinterpretation."
+        : "원작에서는 구조적 구도 앵커만 남기고, 스타일·색채 처리·텍스처 언어·분위기를 선택한 재해석 방향으로 강하게 대체합니다."
+    };
+  }
+
+  return {
+    mode: "preserve",
+    label: isEnglish ? "Source-focused" : "원작 중심",
+    guide: isEnglish
+      ? "Keep the source painting dominant and apply only restrained character/background conversion."
+      : "원작을 중심으로 유지하고 캐릭터/배경 변환은 절제해 반영합니다.",
+    weightClause: isEnglish
+      ? "transformation weight: original 85%, reinterpretation 15%"
+      : "변환 비중: 원작 85%, 재해석 15%",
+    priorityClause: isEnglish
+      ? "priority rule: preserve original subject placement, depth, and palette hierarchy first"
+      : "우선순위: 원작 인물 배치·원근·색채 위계를 최우선 보존",
+    directive: isEnglish
+      ? "Preserve composition, subject placement, and palette logic from the source; apply reinterpretation only as controlled accents."
+      : "원작의 구도·인물 배치·색채 논리를 보존하고, 재해석은 보조적인 강조 요소로 제한합니다."
+  };
 }
 
 function getPromptApiKey() {
@@ -1914,6 +1968,7 @@ function buildAutoSuggestion() {
   const character = resolveCharacterProfile();
   const manualBackground = getManualBackground();
   const background = resolveBackground(character, ui.backgroundSelect.value, masterpiece);
+  const reinterpretationProfile = getReinterpretationProfile(ui.reinterpretationInput.value, "ko");
 
   const characterLine =
     character.id === "no-change"
@@ -1946,6 +2001,7 @@ function buildAutoSuggestion() {
       `- 색감/조명: ${character.colorLighting}, ${background.lighting}`,
       `- 분위기: ${character.mood}, ${background.mood}`,
       `- 상징: ${character.symbolism}, ${background.symbolism}`,
+      `- 재해석 단계: ${reinterpretationProfile.label} (${reinterpretationProfile.weightClause})`,
       `- 품질: ${QUALITY_DIRECTIVE}`,
       "",
       "이 설정으로 프롬프트를 자동 구성합니다."
@@ -1977,7 +2033,7 @@ function randomizeCombination() {
         : pick(nonDefaultBackgrounds).id;
 
   const randomRatio = pick(["1:1", "3:4", "4:5", "16:9", "9:16"]);
-  const randomStrength = pick(["0", "20", "40", "70", "90"]);
+  const randomStrength = pick(["preserve", "balanced", "bold"]);
 
   if (ui.characterCustomInput) {
     ui.characterCustomInput.value = "";
@@ -2047,7 +2103,7 @@ async function loadModels() {
 
 function collectPayload() {
   const suggestion = buildAutoSuggestion();
-  const reinterpretationLevel = Number(ui.reinterpretationInput.value);
+  const reinterpretationLevel = String(ui.reinterpretationInput.value || "preserve");
 
   const customSubject =
     suggestion.character.id === "no-change"
@@ -2085,32 +2141,7 @@ function normalizeOneLinePrompt(text) {
 }
 
 function getReinterpretationDirective(level, language = "en") {
-  const value = String(level);
-  const isEnglish = language === "en";
-
-  if (value === "0") {
-    return isEnglish
-      ? "Maintain the original composition, subject placement, and color logic with minimal reinterpretation."
-      : "원작의 구도, 인물 배치, 색채 논리를 최대한 유지하고 재해석은 최소화합니다.";
-  }
-  if (value === "20") {
-    return isEnglish
-      ? "Keep the source painting dominant while applying subtle character and background conversion."
-      : "원작 비중을 높게 유지하되 캐릭터와 배경 전환을 절제해 반영합니다.";
-  }
-  if (value === "40") {
-    return isEnglish
-      ? "Preserve most source identity while adding visible character and background reinterpretation."
-      : "원작 정체성을 중심으로 유지하면서 캐릭터/배경 재해석을 분명하게 추가합니다.";
-  }
-  if (value === "70") {
-    return isEnglish
-      ? "Rebuild expression boldly around the selected character and background while preserving the source composition DNA."
-      : "원작 구도 DNA는 유지하되 선택한 캐릭터와 배경 중심으로 표현을 과감히 재구성합니다.";
-  }
-  return isEnglish
-    ? "Keep only the source motif and push a strong reinterpretation in character styling and environment."
-    : "원작 모티프만 남기고 캐릭터 스타일과 환경 연출의 재해석 강도를 높입니다.";
+  return getReinterpretationProfile(level, language).directive;
 }
 
 function buildSelectionLockClause(input) {
@@ -2166,11 +2197,15 @@ function enforceSelectionMatchInPrompt(prompt, input) {
 
 function buildLocalPromptResult(input) {
   const isEnglish = input.language === "en";
-  const reinterpretationDirective = getReinterpretationDirective(input.reinterpretationLevel, input.language);
+  const reinterpretationProfile = getReinterpretationProfile(input.reinterpretationLevel, input.language);
+  const reinterpretationDirective = reinterpretationProfile.directive;
   const finalPrompt = enforceSelectionMatchInPrompt(
     [
       `${input.masterpiece} by ${input.artist}`,
-      `keep the original composition DNA`,
+      `reinterpretation mode: ${reinterpretationProfile.label}`,
+      reinterpretationProfile.weightClause,
+      reinterpretationProfile.priorityClause,
+      `keep the original composition DNA as structural anchor`,
       `subject conversion: ${input.customSubject}`,
       `subject style: ${input.subjectStyle}`,
       `background conversion: ${input.backgroundStyle}`,
@@ -2200,6 +2235,11 @@ function buildLocalPromptResult(input) {
     isEnglish
       ? `- Background reinterpretation: ${input.backgroundStyle}`
       : `- 배경 재해석: ${input.backgroundStyle}`,
+    isEnglish
+      ? `- Reinterpretation mode: ${reinterpretationProfile.label}`
+      : `- 재해석 단계: ${reinterpretationProfile.label}`,
+    isEnglish ? `- Weight policy: ${reinterpretationProfile.weightClause}` : `- 비중 정책: ${reinterpretationProfile.weightClause}`,
+    isEnglish ? `- Priority rule: ${reinterpretationProfile.priorityClause}` : `- 우선순위 규칙: ${reinterpretationProfile.priorityClause}`,
     isEnglish ? `- Color/Lighting: ${input.colorLighting}` : `- 색감/조명: ${input.colorLighting}`,
     isEnglish ? `- Texture: ${input.textureBrushwork}` : `- 텍스처: ${input.textureBrushwork}`,
     isEnglish ? `- Mood/Narrative: ${input.moodStory}` : `- 분위기/서사: ${input.moodStory}`,

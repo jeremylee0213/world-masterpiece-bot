@@ -105,14 +105,12 @@
             <label class="field span-2">
               <span>재해석 강도</span>
               <select id="reinterpretation">
-                <option value="0" selected>원작 완전 유지</option>
-                <option value="20">원작 거의 유지</option>
-                <option value="40">원작 많이 유지</option>
-                <option value="70">재해석 수준</option>
-                <option value="90">강한 재해석</option>
+                <option value="preserve" selected>1단계: 원작 중심</option>
+                <option value="balanced">2단계: 균형 재해석</option>
+                <option value="bold">3단계: 강한 재해석</option>
               </select>
               <small id="reinterpretation-help" class="help-text">
-                원작 완전 유지: 원작의 구도와 표현 요소를 우선 보존하며 최소한의 스타일 조정만 적용합니다.
+                1단계: 원작 중심. 원작 비중을 높게 유지하고 캐릭터/배경 전환은 절제합니다.
               </small>
             </label>
           </div>
@@ -198,6 +196,6 @@
     </main>
 
     <script src="./masterpieces-data.js?v=20260214u" defer></script>
-    <script src="./app.js?v=20260214v" defer></script>
+    <script src="./app.js?v=20260214w" defer></script>
   </body>
 </html>
