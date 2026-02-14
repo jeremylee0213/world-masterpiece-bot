@@ -830,8 +830,8 @@ const DEFAULT_PROMPT_MODEL = "gemini-3-pro-preview";
 const DEFAULT_IMAGE_MODEL = "gemini-3-pro-image-preview";
 const QUALITY_DIRECTIVE =
   "Nanobanana Pro 최고 해상도, ultra high resolution, 8K quality, extreme detail, high fidelity rendering";
-const IMAGE_PROXY_ENDPOINT = "/api/image-proxy";
 const GENERATED_IMAGE_FILENAME = "nanobanana-generated.png";
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 const PROMPT_API_KEY_STORAGE = "nanobanana_google_prompt_api_key_v2";
 const LEGACY_PROMPT_KEY_STORAGE = "nanobanana_google_prompt_api_key";
@@ -966,12 +966,6 @@ function buildArtworkImageCandidates(work) {
   return uniqueValues([primary, ...backups, ...buildWikimediaCandidates(primary)]);
 }
 
-function buildProxyImageUrl(candidate) {
-  const params = new URLSearchParams();
-  params.append("u", String(candidate || "").trim());
-  return `${IMAGE_PROXY_ENDPOINT}?${params.toString()}`;
-}
-
 function buildWikimediaMirrorCandidates(primaryUrl) {
   const fileName = extractWikimediaFileName(primaryUrl);
   if (!fileName) {
@@ -1003,9 +997,7 @@ function buildArtworkImageSources(work) {
     }
   });
 
-  const proxyCandidates = directCandidates.map((candidate) => buildProxyImageUrl(candidate));
-
-  return uniqueValues([...directCandidates, ...weservFallbacks, ...proxyCandidates]);
+  return uniqueValues([...directCandidates, ...weservFallbacks]);
 }
 
 function fitArtworkImageFrame(imageElement, frameInner) {
@@ -1232,16 +1224,249 @@ function pickValidGoogleKey(candidates) {
 }
 
 async function verifyGeminiApiKey(apiKey) {
-  const response = await fetch("/api/models?strict=1", {
-    headers: {
-      "x-google-api-key": apiKey,
-      "x-google-prompt-api-key": apiKey
-    }
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.error || "Gemini API 키 검증에 실패했습니다.");
+  const models = await fetchGeminiModels(apiKey);
+  if (!models || models.length === 0) {
+    throw new Error("활성화된 Gemini 모델을 찾지 못했습니다.");
   }
+}
+
+function mapGeminiErrorMessage(message, statusCode) {
+  const raw = String(message || "").trim();
+  const lower = raw.toLowerCase();
+
+  if (statusCode === 400 && lower.includes("invalid argument")) {
+    return "요청 형식이 잘못되었습니다. 앱 로직을 업데이트해야 할 수 있으니 잠시 뒤 재시도해 주세요.";
+  }
+
+  if (lower.includes("api key not valid") || lower.includes("invalid api key")) {
+    return "Gemini API 키가 유효하지 않습니다. Google AI Studio에서 발급한 AIza... 키인지, 키 제한에서 Generative Language API 사용이 허용되어 있는지 확인해 주세요.";
+  }
+
+  if (
+    lower.includes("permission denied") ||
+    lower.includes("not enabled") ||
+    lower.includes("has not been used") ||
+    lower.includes("api_key_service_blocked")
+  ) {
+    return "Gemini API 권한 오류입니다. 해당 키에서 Generative Language API를 활성화하고, 키 제한(HTTP referrer/IP/API 제한)을 확인해 주세요.";
+  }
+
+  if (lower.includes("quota") || lower.includes("rate limit")) {
+    return "Gemini API 할당량/요청 제한에 도달했습니다. 잠시 후 다시 시도하거나 프로젝트 사용량 제한을 확인해 주세요.";
+  }
+
+  return raw || `Gemini 요청 실패 (${statusCode || "unknown"})`;
+}
+
+function normalizeGeminiText(data) {
+  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+  for (const candidate of candidates) {
+    const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+    const text = parts
+      .map((part) => (typeof part?.text === "string" ? part.text : ""))
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function normalizeGeminiImage(data) {
+  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+  for (const candidate of candidates) {
+    const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+    for (const part of parts) {
+      const inlineData = part?.inlineData || part?.inline_data;
+      if (inlineData?.data) {
+        return {
+          mimeType: inlineData?.mimeType || "image/png",
+          data: String(inlineData.data).trim()
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function isModelUnavailableError(status, message) {
+  const lower = String(message || "").toLowerCase();
+  return (
+    status === 404 ||
+    lower.includes("not found") ||
+    lower.includes("not supported") ||
+    lower.includes("unknown model")
+  );
+}
+
+function buildPromptModelCandidates(requestedModel) {
+  return uniqueValues([String(requestedModel || "").trim() || DEFAULT_PROMPT_MODEL, ...GEMINI_TEXT_MODELS]);
+}
+
+function buildImageModelCandidates(requestedModel) {
+  return uniqueValues([String(requestedModel || "").trim() || DEFAULT_IMAGE_MODEL, ...GEMINI_IMAGE_MODELS]);
+}
+
+async function requestGeminiModel(model, payload, apiKey) {
+  const endpoint = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`;
+  const response = await fetch(`${endpoint}?key=${encodeURIComponent(apiKey)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const raw = await response.text();
+  let json = null;
+
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    json = null;
+  }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    json,
+    model,
+    raw
+  };
+}
+
+async function generatePromptWithGemini({ input, model }) {
+  const apiKey = getPromptApiKey();
+  const { systemInstruction, userInstruction } = buildInstruction({
+    language: input?.language || "en",
+    input
+  });
+
+  const payload = {
+    systemInstruction: {
+      parts: [{ text: systemInstruction }]
+    },
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: userInstruction }]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.45
+    }
+  };
+
+  const candidates = buildPromptModelCandidates(model);
+  let lastError = "Gemini 요청 실패";
+
+  for (const candidate of candidates) {
+    const result = await requestGeminiModel(candidate, payload, apiKey);
+    if (result.ok) {
+      const text = normalizeGeminiText(result.json);
+      if (!text) {
+        lastError = "Gemini 응답에서 텍스트를 추출하지 못했습니다.";
+        continue;
+      }
+
+      return {
+        prompt: text,
+        endpoint: `gemini:${candidate}:generateContent`
+      };
+    }
+
+    const message = result.json?.error?.message || `Gemini 요청 실패 (${result.status})`;
+    lastError = mapGeminiErrorMessage(message, result.status);
+    if (!isModelUnavailableError(result.status, message)) {
+      break;
+    }
+  }
+
+  throw new Error(lastError);
+}
+
+async function generateImageWithGemini({ model, prompt, aspectRatio, qualityDirective }) {
+  const apiKey = getImageApiKey();
+
+  const payload = {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: [String(prompt || "").trim(), "", `Aspect ratio: ${String(aspectRatio || "3:4")}`, String(qualityDirective || "").trim()].filter(Boolean).join("\n") }]
+      }
+    ],
+    generationConfig: {
+      responseModalities: ["IMAGE", "TEXT"]
+    }
+  };
+
+  const candidates = buildImageModelCandidates(model);
+  let lastError = "이미지 생성 실패";
+
+  for (const candidate of candidates) {
+    const result = await requestGeminiModel(candidate, payload, apiKey);
+    if (!result.ok) {
+      lastError = mapGeminiErrorMessage(
+        result.json?.error?.message || `Gemini 이미지 요청 실패 (${result.status})`,
+        result.status
+      );
+      continue;
+    }
+
+    const image = normalizeGeminiImage(result.json);
+    if (!image?.data) {
+      lastError = "이미지 응답에서 이미지 데이터를 찾지 못했습니다.";
+      continue;
+    }
+
+    return {
+      endpoint: `gemini:${candidate}:generateContent`,
+      model: candidate,
+      imageDataUrl: `data:${image.mimeType};base64,${image.data}`
+    };
+  }
+
+  throw new Error(lastError);
+}
+
+async function fetchGeminiModels(apiKey) {
+  const endpoint = `${GEMINI_API_BASE}/models?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(endpoint);
+  const raw = await response.text();
+  let json = null;
+
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    json = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(mapGeminiErrorMessage(json?.error?.message || `Gemini 모델 조회 실패 (${response.status})`, response.status));
+  }
+
+  const models = Array.isArray(json?.models) ? json.models : [];
+  const available = models
+    .filter((entry) => Array.isArray(entry?.supportedGenerationMethods) && entry.supportedGenerationMethods.includes("generateContent"))
+    .map((entry) => String(entry?.name || "").replace(/^models\//, "").trim())
+    .filter((name) => name.startsWith("gemini-"));
+
+  return uniqueValues(sortGeminiModels(available.filter(Boolean)));
+}
+
+function sortGeminiModels(values) {
+  const rank = new Map(GEMINI_TEXT_MODELS.map((model, index) => [model, index]));
+  return values
+    .filter((name, index, arr) => name && arr.indexOf(name) === index)
+    .sort((a, b) => {
+      const aRank = rank.has(a) ? rank.get(a) : Number.MAX_SAFE_INTEGER;
+      const bRank = rank.has(b) ? rank.get(b) : Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) {
+        return aRank - bRank;
+      }
+      return a.localeCompare(b);
+    });
 }
 
 async function savePromptApiKey() {
@@ -1317,24 +1542,78 @@ function loadSavedPromptApiKey() {
   }
 }
 
-function createPromptApiHeaders() {
-  const apiKey = getPromptApiKey();
-  const headers = { "Content-Type": "application/json" };
-  if (apiKey) {
-    headers["x-google-api-key"] = apiKey;
-    headers["x-google-prompt-api-key"] = apiKey;
-  }
-  return headers;
-}
+function buildInstruction({ language, input }) {
+  const languageHint = language === "en" ? "English" : "Korean";
+  const systemInstruction = [
+    "You are Nanobanana Prompt Architect.",
+    "You are a senior art director who remixes classical paintings into character-centric image prompts.",
+    "The user now provides simple controls: masterpiece, character conversion, and background conversion.",
+    "Preserve the source painting's recognizable composition DNA while transforming subject and background.",
+    "If qualityDirective exists in render_preferences, include it verbatim in FINAL_PROMPT.",
+    "Use precise visual language for image generation models.",
+    "Avoid vague wording. Keep output easy for beginners.",
+    `Write every section in ${languageHint}.`,
+    "Output exactly with this structure:",
+    "[FINAL_PROMPT]",
+    "one single line only, copy-ready image prompt, no line breaks",
+    "",
+    "[COMPONENT_MAP]",
+    "- Source DNA: ...",
+    "- Subject reinterpretation: ...",
+    "- Composition and camera: ...",
+    "- Color and lighting: ...",
+    "- Texture and brushwork: ...",
+    "- Mood and narrative: ...",
+    "- Constraints: ...",
+    "",
+    "[QUICK_VARIANTS]",
+    "1) Stable: conservative, source-faithful variant",
+    "2) Balanced: middle-ground variant",
+    "3) Experimental: bold reinterpretation variant"
+  ].join("\n");
 
-function createImageApiHeaders() {
-  const headers = { "Content-Type": "application/json" };
-  const apiKey = getImageApiKey();
-  if (apiKey) {
-    headers["x-google-api-key"] = apiKey;
-    headers["x-google-image-api-key"] = apiKey;
-  }
-  return headers;
+  const userInstruction = [
+    "Design a high-quality remix prompt from this JSON.",
+    "Prioritize a single-line image-generation prompt with strong visual clarity.",
+    "Focus on character conversion and background conversion directives from user input.",
+    "Use beginner-friendly but specific wording.",
+    "Honor qualityDirective exactly when provided.",
+    "Always output exactly three quick variants with labels Stable, Balanced, Experimental.",
+    "If a field is empty, make a reasonable creative choice.",
+    "Respect the ratio exactly as written.",
+    "JSON:",
+    JSON.stringify({
+      source: {
+        masterpiece: input?.masterpiece || "",
+        artist: input?.artist || "",
+        customSubject: input?.customSubject || ""
+      },
+      user_preferences: {
+        subjectStyle: input?.subjectStyle || "",
+        backgroundStyle: input?.backgroundStyle || "",
+        colorLighting: input?.colorLighting || "",
+        textureBrushwork: input?.textureBrushwork || "",
+        moodStory: input?.moodStory || "",
+        compositionCamera: input?.compositionCamera || "",
+        symbolism: input?.symbolism || "",
+        negatives: input?.negatives || "",
+        palette: input?.palette || "",
+        compositionTemplate: input?.compositionTemplate || "",
+        symbolismLibrary: input?.symbolismLibrary || "",
+        moodMatrix: input?.moodMatrix || "",
+        medium: input?.medium || "",
+        preserveElements: Array.isArray(input?.preserveElements) ? input.preserveElements : []
+      },
+      render_preferences: {
+        reinterpretationLevel: input?.reinterpretationLevel,
+        aspectRatio: input?.aspectRatio || "",
+        language: languageHint,
+        qualityDirective: input?.qualityDirective || ""
+      }
+    }, null, 2)
+  ].join("\n");
+
+  return { systemInstruction, userInstruction };
 }
 
 function findMasterpieceById(id) {
@@ -1801,17 +2080,15 @@ async function loadModels() {
   try {
     setStatus("Gemini 모델 목록을 불러오는 중입니다...");
     const apiKey = getPromptApiKey();
-    const endpoint = apiKey ? "/api/models?strict=1" : "/api/models";
-    const response = await fetch(endpoint, {
-      headers: createPromptApiHeaders()
-    });
-    const data = await response.json();
+    if (!apiKey) {
+      throw new Error("API 키가 없어 기본 목록으로 표시합니다.");
+    }
+
+    const data = {
+      models: await fetchGeminiModels(apiKey)
+    };
 
     ui.modelSelect.innerHTML = "";
-
-    if (!response.ok) {
-      throw new Error(data?.error || "모델 조회 실패");
-    }
 
     data.models.forEach((modelId) => appendOption(ui.modelSelect, modelId, modelId));
 
@@ -1924,17 +2201,7 @@ async function generatePrompt(event) {
   ui.endpointBadge.textContent = "API: -";
 
   try {
-    const response = await fetch("/api/generate", {
-      method: "POST",
-      headers: createPromptApiHeaders(),
-      body: JSON.stringify(payload)
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data?.error || "프롬프트 생성 실패");
-    }
+    const data = await generatePromptWithGemini(payload);
 
     const finalPrompt = normalizeOneLinePrompt(extractSection(data.prompt, "FINAL_PROMPT") || data.prompt);
     ui.finalPromptOutput.value = finalPrompt;
@@ -2015,24 +2282,12 @@ function renderGeneratedImage(dataUrl) {
 }
 
 async function requestImageGeneration({ imageApiKey, imageModel, prompt, aspectRatio, qualityDirective }) {
-  const response = await fetch("/api/generate-image", {
-    method: "POST",
-    headers: createImageApiHeaders(),
-    body: JSON.stringify({
-      imageApiKey,
-      imageModel,
-      prompt,
-      aspectRatio,
-      qualityDirective
-    })
+  return generateImageWithGemini({
+    model: imageModel || DEFAULT_IMAGE_MODEL,
+    prompt,
+    aspectRatio,
+    qualityDirective
   });
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data?.error || "이미지 생성 실패");
-  }
-
-  return data;
 }
 
 function getImagePromptFromSource(source = "final") {
