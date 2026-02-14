@@ -1336,7 +1336,16 @@ async function requestGeminiModel(model, payload, apiKey) {
   };
 }
 
-async function generatePromptWithGemini({ input, model }) {
+async function generatePromptWithGemini(request = {}) {
+  const input =
+    request && typeof request === "object" && request.input && typeof request.input === "object"
+      ? request.input
+      : request;
+  const requestedModel =
+    request && typeof request === "object" && request.input && typeof request.input === "object"
+      ? request.model
+      : request?.model;
+
   const apiKey = getPromptApiKey();
   const { systemInstruction, userInstruction } = buildInstruction({
     language: input?.language || "en",
@@ -1358,7 +1367,7 @@ async function generatePromptWithGemini({ input, model }) {
     }
   };
 
-  const candidates = buildPromptModelCandidates(model);
+  const candidates = buildPromptModelCandidates(requestedModel);
   let lastError = "Gemini 요청 실패";
 
   for (const candidate of candidates) {
@@ -1550,6 +1559,7 @@ function buildInstruction({ language, input }) {
     "The user now provides simple controls: masterpiece, character conversion, and background conversion.",
     "Preserve the source painting's recognizable composition DNA while transforming subject and background.",
     "If qualityDirective exists in render_preferences, include it verbatim in FINAL_PROMPT.",
+    "FINAL_PROMPT must explicitly reflect source painting, character conversion, background conversion, and aspect ratio from selection_lock.",
     "Use precise visual language for image generation models.",
     "Avoid vague wording. Keep output easy for beginners.",
     `Write every section in ${languageHint}.`,
@@ -1578,6 +1588,7 @@ function buildInstruction({ language, input }) {
     "Focus on character conversion and background conversion directives from user input.",
     "Use beginner-friendly but specific wording.",
     "Honor qualityDirective exactly when provided.",
+    "Always align FINAL_PROMPT with selection_lock values. Never replace or ignore them.",
     "Always output exactly three quick variants with labels Stable, Balanced, Experimental.",
     "If a field is empty, make a reasonable creative choice.",
     "Respect the ratio exactly as written.",
@@ -1609,6 +1620,13 @@ function buildInstruction({ language, input }) {
         aspectRatio: input?.aspectRatio || "",
         language: languageHint,
         qualityDirective: input?.qualityDirective || ""
+      },
+      selection_lock: {
+        sourcePainting: input?.masterpiece || "",
+        artist: input?.artist || "",
+        characterConversion: input?.customSubject || "",
+        backgroundConversion: input?.backgroundStyle || "",
+        aspectRatio: input?.aspectRatio || ""
       }
     }, null, 2)
   ].join("\n");
@@ -2157,6 +2175,57 @@ function normalizeOneLinePrompt(text) {
     .trim();
 }
 
+function buildSelectionLockClause(input) {
+  const source = String(input?.masterpiece || "").trim();
+  const artist = String(input?.artist || "").trim();
+  const characterConversion = String(input?.customSubject || "").trim();
+  const backgroundConversion = String(input?.backgroundStyle || "").trim();
+  const aspectRatio = String(input?.aspectRatio || "").trim();
+
+  const parts = [];
+  if (source) {
+    parts.push(`source painting ${source}`);
+  }
+  if (artist) {
+    parts.push(`artist ${artist}`);
+  }
+  if (characterConversion) {
+    parts.push(`character conversion ${characterConversion}`);
+  }
+  if (backgroundConversion) {
+    parts.push(`background conversion ${backgroundConversion}`);
+  }
+  if (aspectRatio) {
+    parts.push(`aspect ratio ${aspectRatio}`);
+  }
+
+  return parts.join(", ");
+}
+
+function enforceSelectionMatchInPrompt(prompt, input) {
+  const normalizedPrompt = normalizeOneLinePrompt(prompt);
+  const lockClause = buildSelectionLockClause(input);
+
+  if (!lockClause) {
+    return normalizedPrompt;
+  }
+
+  const lowerPrompt = normalizedPrompt.toLowerCase();
+  const checks = [
+    String(input?.masterpiece || "").trim(),
+    String(input?.customSubject || "").trim(),
+    String(input?.backgroundStyle || "").trim(),
+    String(input?.aspectRatio || "").trim()
+  ].filter(Boolean);
+
+  const hasAllCoreSelections = checks.every((value) => lowerPrompt.includes(value.toLowerCase()));
+  if (hasAllCoreSelections) {
+    return normalizedPrompt;
+  }
+
+  return normalizeOneLinePrompt(`${normalizedPrompt}, ${lockClause}`);
+}
+
 function scrollToOutput() {
   if (!ui.outputSection) {
     return;
@@ -2201,9 +2270,10 @@ async function generatePrompt(event) {
   ui.endpointBadge.textContent = "API: -";
 
   try {
-    const data = await generatePromptWithGemini(payload);
+    const data = await generatePromptWithGemini({ input: payload, model: payload.model });
 
-    const finalPrompt = normalizeOneLinePrompt(extractSection(data.prompt, "FINAL_PROMPT") || data.prompt);
+    const baseFinalPrompt = normalizeOneLinePrompt(extractSection(data.prompt, "FINAL_PROMPT") || data.prompt);
+    const finalPrompt = enforceSelectionMatchInPrompt(baseFinalPrompt, payload);
     ui.finalPromptOutput.value = finalPrompt;
     ui.rawOutput.value = data.prompt;
     ui.endpointBadge.textContent = `API: ${data.endpoint}`;
