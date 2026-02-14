@@ -930,7 +930,11 @@ function fitArtworkImageFrame(imageElement, frameInner) {
   frameInner.style.width = `${width}px`;
 }
 
-const IMAGE_ATTEMPT_TIMEOUT_MS = 5000;
+const IMAGE_ATTEMPT_TIMEOUT_MS = 18000;
+
+function isRemoteImageSource(src) {
+  return /^https?:\/\//i.test(String(src || "").trim());
+}
 
 function attachImageSourceFallback(imageElement, sources, handlers = {}) {
   const callbacks = typeof handlers === "function" ? { onAllFailed: handlers } : handlers;
@@ -950,8 +954,11 @@ function attachImageSourceFallback(imageElement, sources, handlers = {}) {
     callbacks.onAllFailed?.();
   };
 
-  const scheduleAttemptTimeout = () => {
+  const scheduleAttemptTimeout = (src) => {
     clearAttemptTimeout();
+    if (!isRemoteImageSource(src)) {
+      return;
+    }
     attemptTimeout = setTimeout(() => {
       callbacks.onAttemptTimeout?.({ attempt: index, total: queue.length });
       tryNext();
@@ -978,7 +985,7 @@ function attachImageSourceFallback(imageElement, sources, handlers = {}) {
     index += 1;
     callbacks.onAttempt?.({ attempt, total: queue.length, src: nextSrc });
     imageElement.src = nextSrc;
-    scheduleAttemptTimeout();
+    scheduleAttemptTimeout(nextSrc);
   };
 
   const onError = () => {
