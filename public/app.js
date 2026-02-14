@@ -6,7 +6,10 @@ const MASTERPIECE_CATEGORIES = [
   { id: "pop", label: "팝아트/그래픽" }
 ];
 
-const MASTERPIECES = [
+const MASTERPIECES =
+  Array.isArray(window.__MASTERPIECES_LOCAL__) && window.__MASTERPIECES_LOCAL__.length > 0
+    ? window.__MASTERPIECES_LOCAL__
+    : [
   {
     id: "mona-lisa",
     titleKo: "모나리자",
@@ -895,109 +898,21 @@ function uniqueValues(values) {
   return [...new Set(values.filter(Boolean))];
 }
 
-function extractWikimediaFileName(rawUrl) {
-  try {
-    const urlObj = new URL(rawUrl);
-    const segments = urlObj.pathname.split("/").filter(Boolean);
-    if (segments.length === 0) {
-      return "";
-    }
-
-    const last = segments[segments.length - 1];
-    if (last.startsWith("Special:FilePath")) {
-      return decodeURIComponent(segments[segments.length - 1].replace("Special:FilePath/", ""));
-    }
-
-    if (/^\d+px-/.test(last)) {
-      return decodeURIComponent(last.replace(/^\d+px-/, ""));
-    }
-
-    if (/\.(jpg|jpeg|png|webp|gif)$/i.test(last)) {
-      return decodeURIComponent(last);
-    }
-  } catch {
-    return "";
-  }
-
-  return "";
-}
-
-function buildWikimediaCandidates(primaryUrl) {
-  const candidates = [];
-
-  try {
-    const urlObj = new URL(primaryUrl);
-    const segments = urlObj.pathname.split("/").filter(Boolean);
-
-    if (
-      urlObj.hostname === "upload.wikimedia.org" &&
-      segments[0] === "wikipedia" &&
-      segments[1] === "commons" &&
-      segments[2] === "thumb" &&
-      segments.length >= 7
-    ) {
-      const shardA = segments[3];
-      const shardB = segments[4];
-      const fileName = segments[5];
-
-      candidates.push(`https://upload.wikimedia.org/wikipedia/commons/${shardA}/${shardB}/${fileName}`);
-      candidates.push(`https://upload.wikimedia.org/wikipedia/commons/thumb/${shardA}/${shardB}/${fileName}/1200px-${fileName}`);
-      candidates.push(`https://upload.wikimedia.org/wikipedia/commons/thumb/${shardA}/${shardB}/${fileName}/1024px-${fileName}`);
-      candidates.push(`https://upload.wikimedia.org/wikipedia/commons/thumb/${shardA}/${shardB}/${fileName}/800px-${fileName}`);
-      candidates.push(`https://upload.wikimedia.org/wikipedia/commons/thumb/${shardA}/${shardB}/${fileName}/640px-${fileName}`);
-    }
-  } catch {
-    // URL 파싱에 실패하면 후보 확장을 생략한다.
-  }
-
-  const fileName = extractWikimediaFileName(primaryUrl);
-  if (fileName) {
-    const encoded = encodeURIComponent(fileName);
-    candidates.push(`https://commons.wikimedia.org/wiki/Special:FilePath/${encoded}`);
-    candidates.push(`https://en.wikipedia.org/wiki/Special:FilePath/${encoded}`);
-  }
-
-  return uniqueValues(candidates);
-}
-
 function buildArtworkImageCandidates(work) {
   const primary = String(work.imageUrl || "").trim();
   const backups = Array.isArray(work.backupImageUrls) ? work.backupImageUrls : [];
-  return uniqueValues([primary, ...backups, ...buildWikimediaCandidates(primary)]);
-}
 
-function buildWikimediaMirrorCandidates(primaryUrl) {
-  const fileName = extractWikimediaFileName(primaryUrl);
-  if (!fileName) {
-    return [];
+  const localVariants = [];
+  if (primary.startsWith("./assets/artworks/")) {
+    const base = primary.replace(/\.(jpg|jpeg|png|webp|svg)$/i, "");
+    localVariants.push(`${base}.jpg`, `${base}.jpeg`, `${base}.png`, `${base}.webp`, `${base}.svg`);
   }
 
-  const encoded = encodeURIComponent(fileName);
-  return [
-    `https://commons.wikimedia.org/wiki/Special:FilePath/${encoded}`,
-    `https://en.wikipedia.org/wiki/Special:FilePath/${encoded}`,
-    `https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/${encoded}`,
-    `https://en.wikipedia.org/w/index.php?title=Special:Redirect/file/${encoded}`
-  ];
+  return uniqueValues([primary, ...backups, ...localVariants]);
 }
 
 function buildArtworkImageSources(work) {
-  const candidates = buildArtworkImageCandidates(work);
-  const primary = String(work.imageUrl || "").trim();
-  const mirrors = buildWikimediaMirrorCandidates(primary);
-  const directCandidates = uniqueValues([...candidates, ...mirrors]);
-
-  const weservFallbacks = candidates.map((candidate) => {
-    try {
-      const urlObj = new URL(candidate);
-      const remotePath = `${urlObj.hostname}${urlObj.pathname}`;
-      return `https://images.weserv.nl/?url=${encodeURIComponent(remotePath)}&w=1200`;
-    } catch {
-      return "";
-    }
-  });
-
-  return uniqueValues([...directCandidates, ...weservFallbacks]);
+  return buildArtworkImageCandidates(work);
 }
 
 function fitArtworkImageFrame(imageElement, frameInner) {
