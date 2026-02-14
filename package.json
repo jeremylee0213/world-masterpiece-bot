@@ -1,0 +1,14 @@
+{
+  "name": "nanobanana-prompt-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "World masterpiece remix prompt generator with Gemini API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

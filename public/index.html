@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>나노바나나 프롬프트 스튜디오</title>
+    <link rel="stylesheet" href="/styles.css?v=20260214n" />
+  </head>
+  <body>
+    <div class="bg-orb orb-1"></div>
+    <div class="bg-orb orb-2"></div>
+    <div class="grain"></div>
+
+    <main class="layout">
+      <section class="hero reveal">
+        <p class="eyebrow">Nanobanana Prompt Studio</p>
+        <h1>
+          명화를 인기 캐릭터 감성으로
+          <span>간단하게 리믹스</span>
+        </h1>
+        <p class="hero-copy">
+          텍스트 대신 예시 이미지를 보며 명화를 선택하세요. 캐릭터와 배경만 고르면
+          자동 제안이 생성되고, 한 줄 프롬프트를 바로 만들 수 있습니다.
+        </p>
+      </section>
+
+      <section class="workspace reveal reveal-delay-1">
+        <form id="prompt-form" class="card form-card">
+          <div class="section-title-wrap">
+            <h2>간편 설정</h2>
+            <p>키 입력 → 모델 선택 → 명화/캐릭터/배경 선택 → 생성</p>
+          </div>
+
+          <div class="field-grid">
+            <label class="field span-2">
+              <span>Gemini API 키 (프롬프트 + 이미지 공용)</span>
+              <div class="inline-control inline-control-wide">
+                <input id="prompt-api-key-input" type="password" placeholder="AIza..." autocomplete="off" />
+                <button type="button" id="save-prompt-api-key" class="ghost-btn">로컬 저장</button>
+                <button type="button" id="clear-prompt-api-key" class="ghost-btn">삭제</button>
+              </div>
+              <small class="help-text" id="prompt-api-key-status">이 브라우저(localStorage)에만 저장되며 프롬프트/이미지에 함께 사용됩니다.</small>
+            </label>
+
+            <label class="field">
+              <span id="prompt-model-label">프롬프트 모델</span>
+              <div class="inline-control">
+                <select id="model-select" required></select>
+                <button type="button" id="refresh-models" class="ghost-btn">새로고침</button>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>출력 언어</span>
+              <select id="language">
+                <option value="en" selected>영어 (기본)</option>
+                <option value="ko">한국어</option>
+              </select>
+            </label>
+
+            <section class="field span-2 masterpiece-field" aria-label="원본 명화 선택 영역">
+              <div class="masterpiece-topline">
+                <span>원본 명화 선택</span>
+                <small id="masterpiece-current" class="current-work"></small>
+              </div>
+
+              <div id="masterpiece-tabs" class="gallery-tabs" role="tablist" aria-label="명화 카테고리"></div>
+
+              <div class="gallery-shell" aria-label="명화 캐러셀">
+                <button id="masterpiece-prev" type="button" class="gallery-nav" aria-label="이전 작품">‹</button>
+                <div id="masterpiece-track" class="gallery-track" tabindex="0"></div>
+                <button id="masterpiece-next" type="button" class="gallery-nav" aria-label="다음 작품">›</button>
+              </div>
+
+              <select id="masterpiece-select" class="visually-hidden" aria-hidden="true"></select>
+              <small class="help-text">좌우로 넘겨서 확인하고 액자를 눌러 선택하세요. 모바일에서는 스와이프가 가능합니다.</small>
+            </section>
+
+            <label class="field">
+              <span>캐릭터</span>
+              <select id="character-select"></select>
+              <input
+                id="character-custom"
+                list="character-suggestions"
+                type="text"
+                placeholder="직접 캐릭터 입력 (선택 대신 사용 가능)"
+                aria-label="직접 캐릭터 입력"
+              />
+              <datalist id="character-suggestions"></datalist>
+              <small class="help-text">캐릭터를 직접 입력하면 선택값보다 우선 적용됩니다.</small>
+            </label>
+
+            <label class="field">
+              <span>배경</span>
+              <select id="background-select"></select>
+              <input
+                id="background-custom"
+                list="background-suggestions"
+                type="text"
+                placeholder="직접 배경 입력 (선택 대신 사용 가능)"
+                aria-label="직접 배경 입력"
+              />
+              <datalist id="background-suggestions"></datalist>
+              <small class="help-text">배경은 직접 입력할 수 있으며, 직접 입력이 선택값보다 우선 적용됩니다.</small>
+            </label>
+
+            <label class="field">
+              <span>화면 비율</span>
+              <select id="aspect-ratio">
+                <option value="1:1">1:1</option>
+                <option value="3:4" selected>3:4</option>
+                <option value="4:5">4:5</option>
+                <option value="16:9">16:9</option>
+                <option value="9:16">9:16</option>
+              </select>
+            </label>
+
+            <label class="field span-2">
+              <span>재해석 강도</span>
+              <select id="reinterpretation">
+                <option value="0" selected>원작 완전 유지</option>
+                <option value="20">원작 거의 유지</option>
+                <option value="40">원작 많이 유지</option>
+                <option value="70">재해석 수준</option>
+                <option value="90">강한 재해석</option>
+              </select>
+              <small id="reinterpretation-help" class="help-text">
+                원작 완전 유지: 원작의 구도와 표현 요소를 우선 보존하며 최소한의 스타일 조정만 적용합니다.
+              </small>
+            </label>
+          </div>
+
+          <div class="quick-actions">
+            <button id="randomize-btn" type="button" class="ghost-btn">랜덤 조합 추천</button>
+          </div>
+
+          <label class="field plan-field">
+            <span>시스템 자동 제안</span>
+            <textarea id="auto-plan" rows="6" readonly></textarea>
+          </label>
+
+          <div class="action-row">
+            <button id="generate-btn" type="submit" class="primary-btn">프롬프트 생성</button>
+            <p id="status-text" class="status"></p>
+          </div>
+        </form>
+
+        <aside class="card output-card" id="output-section">
+          <div class="section-title-wrap">
+            <h2>생성 결과</h2>
+            <p>한 줄 프롬프트를 복사해 이미지 모델에 바로 사용하세요.</p>
+          </div>
+
+          <label class="field">
+            <span>최종 한 줄 프롬프트</span>
+            <textarea id="final-prompt" rows="8" readonly placeholder="여기에 결과가 표시됩니다."></textarea>
+          </label>
+
+          <div class="action-row compact action-toolbar-row">
+            <button id="copy-btn" type="button" class="ghost-btn">프롬프트 복사</button>
+            <button id="generate-image-final-btn" type="button" class="image-generate-btn">한줄 프롬프트 이미지 생성</button>
+          </div>
+          <div class="action-row compact image-control-row">
+            <select id="image-model-select" class="image-model-select" aria-label="이미지 생성 모델">
+              <option value="gemini-3-pro-image-preview" selected>gemini-3-pro-image-preview (기본)</option>
+              <option value="gemini-3-pro-preview">gemini-3-pro-preview</option>
+              <option value="gemini-3-pro">gemini-3-pro</option>
+              <option value="gemini-nanobanana-pro">gemini-nanobanana-pro</option>
+              <option value="gemini-2.5-flash-image-preview">gemini-2.5-flash-image-preview</option>
+              <option value="gemini-2.0-flash-preview-image-generation">gemini-2.0-flash-preview-image-generation</option>
+            </select>
+            <span id="endpoint-badge" class="badge">API: -</span>
+          </div>
+
+          <label class="field">
+            <span>Raw 프롬프트 (상세 해설 포함)</span>
+            <textarea id="raw-output" rows="12" readonly placeholder="상세 응답"></textarea>
+          </label>
+          <div class="action-row compact action-toolbar-row">
+            <button id="copy-raw-btn" type="button" class="ghost-btn">Raw 프롬프트 복사</button>
+            <button id="generate-image-raw-btn" type="button" class="image-generate-btn">Raw 프롬프트 이미지 생성</button>
+          </div>
+
+          <section id="generated-image-section" class="generated-image-section is-hidden" aria-live="polite">
+            <div class="section-title-wrap">
+              <h2>생성 이미지</h2>
+              <p id="generated-image-status">한 줄 프롬프트로 이미지를 생성할 수 있습니다.</p>
+            </div>
+            <img id="generated-image" class="generated-image is-hidden" alt="생성된 이미지 결과" />
+            <div class="action-row compact">
+              <a id="download-image-btn" class="ghost-btn is-hidden" download="nanobanana-generated.png">이미지 다운로드</a>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <section class="footnote reveal reveal-delay-2">
+        <p>
+          캐릭터 예시: 귀멸의 칼날, 도라에몽, 헌터헌터, 드래곤볼, 원피스, 나루토, 주술회전, 명탐정 코난, 원펀맨.
+          원하지 않으면 아래 입력창에서 캐릭터를 직접 입력해도 됩니다.
+          명화 미리보기 이미지는 Wikimedia 공개 자료 기반 URL을 사용하며,
+          Nanobanana Pro 최고 해상도 출력 문구가 자동 포함됩니다.
+        </p>
+      </section>
+    </main>
+
+    <script src="/app.js?v=20260214m" defer></script>
+  </body>
+</html>
