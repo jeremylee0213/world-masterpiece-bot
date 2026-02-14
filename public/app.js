@@ -874,11 +874,8 @@ const ui = {
   randomizeButton: document.getElementById("randomize-btn"),
   generateButton: document.getElementById("generate-btn"),
   statusText: document.getElementById("status-text"),
-  finalPromptOutput: document.getElementById("final-prompt"),
   rawOutput: document.getElementById("raw-output"),
   outputSection: document.getElementById("output-section"),
-  copyButton: document.getElementById("copy-btn"),
-  generateImageFinalButton: document.getElementById("generate-image-final-btn"),
   generateImageRawButton: document.getElementById("generate-image-raw-btn"),
   copyRawButton: document.getElementById("copy-raw-btn"),
   generatedImageSection: document.getElementById("generated-image-section"),
@@ -1081,7 +1078,7 @@ function setBusy(isBusy) {
 }
 
 function setImageBusy(isBusy) {
-  const buttons = [ui.generateImageFinalButton, ui.generateImageRawButton].filter(Boolean);
+  const buttons = [ui.generateImageRawButton].filter(Boolean);
   if (buttons.length === 0) {
     return;
   }
@@ -1090,12 +1087,8 @@ function setImageBusy(isBusy) {
     button.disabled = isBusy;
   });
 
-  if (ui.generateImageFinalButton) {
-    ui.generateImageFinalButton.textContent = isBusy ? "생성 중..." : "한줄 프롬프트 이미지 생성";
-  }
-
   if (ui.generateImageRawButton) {
-    ui.generateImageRawButton.textContent = isBusy ? "생성 중..." : "Raw 프롬프트 이미지 생성";
+    ui.generateImageRawButton.textContent = isBusy ? "생성 중..." : "프롬프트 이미지 생성";
   }
 }
 
@@ -2187,20 +2180,20 @@ async function generatePrompt(event) {
 
   setBusy(true);
   setStatus("프롬프트를 생성하고 있습니다...");
-  ui.finalPromptOutput.value = "";
   ui.rawOutput.value = "";
   ui.endpointBadge.textContent = "API: -";
 
   try {
     const data = await generatePromptWithGemini({ input: payload, model: payload.model });
-
-    const baseFinalPrompt = normalizeOneLinePrompt(extractSection(data.prompt, "FINAL_PROMPT") || data.prompt);
-    const finalPrompt = enforceSelectionMatchInPrompt(baseFinalPrompt, payload);
-    ui.finalPromptOutput.value = finalPrompt;
-    ui.rawOutput.value = data.prompt;
+    const promptText = String(data.prompt || "").trim();
+    ui.rawOutput.value = promptText;
     ui.endpointBadge.textContent = `API: ${data.endpoint}`;
 
-    const copied = await copyPromptToClipboard(finalPrompt, true);
+    const copied = await copyPromptToClipboard(
+      promptText,
+      true,
+      "프롬프트 생성 완료. 상세 프롬프트가 자동으로 복사되었습니다."
+    );
     scrollToOutput();
 
     if (!copied) {
@@ -2208,7 +2201,7 @@ async function generatePrompt(event) {
       return;
     }
 
-    setStatus("프롬프트 생성 완료. 하단 결과로 이동합니다. 한 줄 프롬프트가 자동으로 복사되었습니다.", "success");
+    setStatus("프롬프트 생성 완료. 하단 결과로 이동하며 자동 복사되었습니다.", "success");
   } catch (error) {
     setStatus(`오류: ${error.message}`, "error");
   } finally {
@@ -2227,7 +2220,7 @@ async function copyPromptToClipboard(text, autoCopied = false, copiedMessage = "
 
   try {
     await navigator.clipboard.writeText(value);
-    const defaultAutoMessage = "프롬프트 생성 완료 + 클립보드 자동 복사 완료";
+    const defaultAutoMessage = "프롬프트 생성 완료 + 자동 복사 완료";
     const defaultManualMessage = "프롬프트를 복사했습니다.";
     setStatus(
       copiedMessage || (autoCopied ? defaultAutoMessage : defaultManualMessage),
@@ -2242,12 +2235,8 @@ async function copyPromptToClipboard(text, autoCopied = false, copiedMessage = "
   }
 }
 
-async function copyPrompt() {
-  await copyPromptToClipboard(ui.finalPromptOutput.value, false);
-}
-
 async function copyRawPrompt() {
-  await copyPromptToClipboard(ui.rawOutput.value, false, "Raw 프롬프트가 클립보드에 복사되었습니다.");
+  await copyPromptToClipboard(ui.rawOutput.value, false, "프롬프트가 클립보드에 복사되었습니다.");
 }
 
 function resetGeneratedImageView() {
@@ -2282,16 +2271,13 @@ async function requestImageGeneration({ imageApiKey, imageModel, prompt, aspectR
   });
 }
 
-function getImagePromptFromSource(source = "final") {
-  if (source === "raw") {
-    return String(ui.rawOutput.value || "").trim();
-  }
-  return normalizeOneLinePrompt(ui.finalPromptOutput.value);
+function getImagePrompt() {
+  return String(ui.rawOutput.value || "").trim();
 }
 
-async function generateImageFromPrompt(source = "final") {
-  const sourceLabel = source === "raw" ? "Raw 프롬프트" : "최종 한줄 프롬프트";
-  const prompt = getImagePromptFromSource(source);
+async function generateImageFromPrompt() {
+  const sourceLabel = "프롬프트";
+  const prompt = getImagePrompt();
   if (!prompt) {
     setStatus(`${sourceLabel}를 먼저 준비해 주세요.`, "error");
     return;
@@ -2335,19 +2321,9 @@ async function generateImageFromPrompt(source = "final") {
   }
 }
 
-async function generateImageFromFinalPrompt() {
-  await generateImageFromPrompt("final");
-}
-
-async function generateImageFromRawPrompt() {
-  await generateImageFromPrompt("raw");
-}
-
 function bindEvents() {
   ui.form.addEventListener("submit", generatePrompt);
-  ui.copyButton.addEventListener("click", copyPrompt);
-  ui.generateImageFinalButton?.addEventListener("click", generateImageFromFinalPrompt);
-  ui.generateImageRawButton?.addEventListener("click", generateImageFromRawPrompt);
+  ui.generateImageRawButton?.addEventListener("click", generateImageFromPrompt);
   ui.copyRawButton?.addEventListener("click", copyRawPrompt);
   ui.refreshModelsButton.addEventListener("click", loadModels);
   ui.savePromptApiKeyButton?.addEventListener("click", savePromptApiKey);
@@ -2392,7 +2368,7 @@ function initialize() {
   refreshAutoPlan();
   updateReinterpretationUI(ui.reinterpretationInput.value);
   setImageBusy(false);
-  setGeneratedImageStatus("한 줄 프롬프트로 이미지를 생성할 수 있습니다. (이미지 모델 기본: gemini-3-pro-image-preview)");
+  setGeneratedImageStatus("프롬프트로 이미지를 생성할 수 있습니다. (이미지 모델 기본: gemini-3-pro-image-preview)");
   loadModels();
 }
 

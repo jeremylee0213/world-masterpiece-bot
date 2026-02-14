@@ -148,17 +148,17 @@
         <aside class="card output-card" id="output-section">
           <div class="section-title-wrap">
             <h2>생성 결과</h2>
-            <p>한 줄 프롬프트를 복사해 이미지 모델에 바로 사용하세요.</p>
+            <p>생성된 상세 프롬프트를 복사해 이미지 모델에 바로 사용하세요.</p>
           </div>
 
           <label class="field">
-            <span>최종 한 줄 프롬프트</span>
-            <textarea id="final-prompt" rows="8" readonly placeholder="여기에 결과가 표시됩니다."></textarea>
+            <span>프롬프트 (상세 해설 포함)</span>
+            <textarea id="raw-output" rows="14" readonly placeholder="여기에 생성된 상세 프롬프트가 표시됩니다."></textarea>
           </label>
 
           <div class="action-row compact action-toolbar-row">
-            <button id="copy-btn" type="button" class="ghost-btn">프롬프트 복사</button>
-            <button id="generate-image-final-btn" type="button" class="image-generate-btn">한줄 프롬프트 이미지 생성</button>
+            <button id="copy-raw-btn" type="button" class="ghost-btn">프롬프트 복사</button>
+            <button id="generate-image-raw-btn" type="button" class="image-generate-btn">프롬프트 이미지 생성</button>
           </div>
           <div class="action-row compact image-control-row">
             <select id="image-model-select" class="image-model-select" aria-label="이미지 생성 모델">
@@ -172,19 +172,10 @@
             <span id="endpoint-badge" class="badge">API: -</span>
           </div>
 
-          <label class="field">
-            <span>Raw 프롬프트 (상세 해설 포함)</span>
-            <textarea id="raw-output" rows="12" readonly placeholder="상세 응답"></textarea>
-          </label>
-          <div class="action-row compact action-toolbar-row">
-            <button id="copy-raw-btn" type="button" class="ghost-btn">Raw 프롬프트 복사</button>
-            <button id="generate-image-raw-btn" type="button" class="image-generate-btn">Raw 프롬프트 이미지 생성</button>
-          </div>
-
           <section id="generated-image-section" class="generated-image-section is-hidden" aria-live="polite">
             <div class="section-title-wrap">
               <h2>생성 이미지</h2>
-              <p id="generated-image-status">한 줄 프롬프트로 이미지를 생성할 수 있습니다.</p>
+              <p id="generated-image-status">프롬프트로 이미지를 생성할 수 있습니다.</p>
             </div>
             <img id="generated-image" class="generated-image is-hidden" alt="생성된 이미지 결과" />
             <div class="action-row compact">
@@ -204,7 +195,7 @@
       </section>
     </main>
 
-    <script src="./masterpieces-data.js?v=20260214s" defer></script>
-    <script src="./app.js?v=20260214t" defer></script>
+    <script src="./masterpieces-data.js?v=20260214u" defer></script>
+    <script src="./app.js?v=20260214u" defer></script>
   </body>
 </html>
