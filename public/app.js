@@ -836,6 +836,7 @@ const QUALITY_DIRECTIVE =
 const GENERATED_IMAGE_FILENAME = "nanobanana-generated.png";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
+const IMAGE_API_KEY_STORAGE = "nanobanana_google_image_api_key_v3";
 const PROMPT_API_KEY_STORAGE = "nanobanana_google_prompt_api_key_v2";
 const LEGACY_PROMPT_KEY_STORAGE = "nanobanana_google_prompt_api_key";
 const LEGACY_IMAGE_KEY_STORAGE = "nanobanana_google_image_api_key";
@@ -843,7 +844,8 @@ const LEGACY_SHARED_KEY_STORAGE = "nanobanana_google_api_key";
 const LEGACY_GEMINI_PROMPT_KEY_STORAGE = "nanobanana_gemini_prompt_api_key";
 
 const state = {
-  selectedCategory: "all"
+  selectedCategory: "all",
+  latestCopyPrompt: ""
 };
 
 const MANUAL_CHARACTER_ID = "manual-character";
@@ -852,8 +854,6 @@ const MANUAL_BACKGROUND_ID = "manual-background";
 
 const ui = {
   form: document.getElementById("prompt-form"),
-  modelSelect: document.getElementById("model-select"),
-  refreshModelsButton: document.getElementById("refresh-models"),
   languageSelect: document.getElementById("language"),
   masterpieceSelect: document.getElementById("masterpiece-select"),
   masterpieceTabs: document.getElementById("masterpiece-tabs"),
@@ -883,12 +883,11 @@ const ui = {
   generatedImage: document.getElementById("generated-image"),
   downloadImageButton: document.getElementById("download-image-btn"),
   endpointBadge: document.getElementById("endpoint-badge"),
-  promptApiKeyInput: document.getElementById("prompt-api-key-input"),
   imageModelSelect: document.getElementById("image-model-select"),
-  promptModelLabel: document.getElementById("prompt-model-label"),
-  savePromptApiKeyButton: document.getElementById("save-prompt-api-key"),
-  clearPromptApiKeyButton: document.getElementById("clear-prompt-api-key"),
-  promptApiKeyStatus: document.getElementById("prompt-api-key-status")
+  imageApiKeyInput: document.getElementById("image-api-key-input"),
+  saveImageApiKeyButton: document.getElementById("save-image-api-key"),
+  clearImageApiKeyButton: document.getElementById("clear-image-api-key"),
+  imageApiKeyStatus: document.getElementById("image-api-key-status")
 };
 
 function uniqueValues(values) {
@@ -1059,12 +1058,8 @@ function setInlineStatus(element, message, tone = "neutral") {
   element.style.color = "#4b5563";
 }
 
-function setPromptKeyStatus(message, tone = "neutral") {
-  setInlineStatus(ui.promptApiKeyStatus, message, tone);
-}
-
 function setImageKeyStatus(message, tone = "neutral") {
-  setPromptKeyStatus(message, tone);
+  setInlineStatus(ui.imageApiKeyStatus, message, tone);
 }
 
 function setGeneratedImageStatus(message, tone = "neutral") {
@@ -1073,7 +1068,6 @@ function setGeneratedImageStatus(message, tone = "neutral") {
 
 function setBusy(isBusy) {
   ui.generateButton.disabled = isBusy;
-  ui.refreshModelsButton.disabled = isBusy;
   ui.generateButton.textContent = isBusy ? "생성 중..." : "프롬프트 생성";
 }
 
@@ -1116,11 +1110,11 @@ function updateReinterpretationUI(value = ui.reinterpretationInput.value) {
 }
 
 function getPromptApiKey() {
-  return String(ui.promptApiKeyInput?.value || "").trim();
+  return "";
 }
 
 function getImageApiKey() {
-  return getPromptApiKey();
+  return String(ui.imageApiKeyInput?.value || "").trim();
 }
 
 function isLikelyValidGoogleKey(key) {
@@ -1393,76 +1387,78 @@ function sortGeminiModels(values) {
     });
 }
 
-async function savePromptApiKey() {
-  const key = getPromptApiKey();
+async function saveImageApiKey() {
+  const key = getImageApiKey();
   if (!key) {
-    setPromptKeyStatus("먼저 Gemini API 키를 입력해 주세요.", "error");
+    setImageKeyStatus("먼저 이미지 생성용 Gemini API 키를 입력해 주세요.", "error");
     return;
   }
 
   if (!isLikelyValidGoogleKey(key)) {
-    setPromptKeyStatus("Gemini API 키 형식을 확인해 주세요.", "error");
+    setImageKeyStatus("Gemini API 키 형식을 확인해 주세요.", "error");
     return;
   }
 
-  setPromptKeyStatus("Gemini API 키를 검증 중입니다...");
+  setImageKeyStatus("Gemini API 키를 검증 중입니다...");
 
   try {
     await verifyGeminiApiKey(key);
   } catch (error) {
     const message = error?.message || "Gemini API 키 검증에 실패했습니다.";
-    setPromptKeyStatus(message, "error");
+    setImageKeyStatus(message, "error");
     setStatus(`오류: ${message}`, "error");
     return;
   }
 
   try {
-    localStorage.setItem(PROMPT_API_KEY_STORAGE, key);
-    setPromptKeyStatus("Gemini API 키를 저장했습니다. 프롬프트/이미지에 함께 사용됩니다.", "success");
-    setStatus("Gemini API 키 저장 완료. 모델을 다시 불러옵니다.");
-    loadModels();
+    localStorage.setItem(IMAGE_API_KEY_STORAGE, key);
+    setImageKeyStatus("이미지 생성용 Gemini API 키를 저장했습니다.", "success");
+    setStatus("이미지 생성용 API 키 저장 완료", "success");
   } catch {
-    setPromptKeyStatus("로컬 저장에 실패했습니다.", "error");
+    setImageKeyStatus("로컬 저장에 실패했습니다.", "error");
   }
 }
 
-function clearPromptApiKey() {
+function clearImageApiKey() {
   try {
-    localStorage.removeItem(PROMPT_API_KEY_STORAGE);
+    localStorage.removeItem(IMAGE_API_KEY_STORAGE);
     localStorage.removeItem(LEGACY_PROMPT_KEY_STORAGE);
     localStorage.removeItem(LEGACY_GEMINI_PROMPT_KEY_STORAGE);
     localStorage.removeItem(LEGACY_IMAGE_KEY_STORAGE);
     localStorage.removeItem(LEGACY_SHARED_KEY_STORAGE);
-    if (ui.promptApiKeyInput) {
-      ui.promptApiKeyInput.value = "";
+    if (ui.imageApiKeyInput) {
+      ui.imageApiKeyInput.value = "";
     }
-    setPromptKeyStatus("Gemini API 키를 삭제했습니다.", "success");
+    setImageKeyStatus("이미지 생성용 Gemini API 키를 삭제했습니다.", "success");
   } catch {
     setImageKeyStatus("키 삭제에 실패했습니다.", "error");
   }
 }
 
-function loadSavedPromptApiKey() {
+function loadSavedImageApiKey() {
   try {
     const key = pickValidGoogleKey([
+      localStorage.getItem(IMAGE_API_KEY_STORAGE),
       localStorage.getItem(PROMPT_API_KEY_STORAGE),
+      localStorage.getItem(LEGACY_IMAGE_KEY_STORAGE),
       localStorage.getItem(LEGACY_PROMPT_KEY_STORAGE),
-      localStorage.getItem(LEGACY_GEMINI_PROMPT_KEY_STORAGE)
+      localStorage.getItem(LEGACY_GEMINI_PROMPT_KEY_STORAGE),
+      localStorage.getItem(LEGACY_SHARED_KEY_STORAGE)
     ]);
 
     if (!key) {
-      localStorage.removeItem(PROMPT_API_KEY_STORAGE);
-      setPromptKeyStatus("이 브라우저(localStorage)에만 저장됩니다.");
+      localStorage.removeItem(IMAGE_API_KEY_STORAGE);
+      setImageKeyStatus("이미지 생성 API 키는 이 브라우저(localStorage)에만 저장됩니다.");
       return;
     }
 
-    localStorage.setItem(PROMPT_API_KEY_STORAGE, key);
-    if (ui.promptApiKeyInput) {
-      ui.promptApiKeyInput.value = key;
+    localStorage.setItem(IMAGE_API_KEY_STORAGE, key);
+    if (ui.imageApiKeyInput) {
+      ui.imageApiKeyInput.value = key;
     }
-    setPromptKeyStatus("저장된 Gemini API 키를 불러왔습니다.", "success");
+    setImageKeyStatus("저장된 이미지 생성용 Gemini API 키를 불러왔습니다.", "success");
   } catch {
-    setPromptKeyStatus("로컬 저장소 접근 실패", "error");
+    setImageKeyStatus("로컬 저장소 접근 실패", "error");
   }
 }
 
@@ -2061,8 +2057,6 @@ function collectPayload() {
         : `${suggestion.character.series} 캐릭터 '${suggestion.character.character}'로 원작 핵심 인물을 재해석`;
 
   const payload = {
-    promptApiKey: getPromptApiKey(),
-    model: ui.modelSelect.value,
     masterpiece: `${suggestion.masterpiece.titleKo} (${suggestion.masterpiece.titleEn})`,
     artist: `${suggestion.masterpiece.artistKo} (${suggestion.masterpiece.artistEn})`,
     customSubject,
@@ -2088,6 +2082,35 @@ function normalizeOneLinePrompt(text) {
     .replace(/\s+/g, " ")
     .replace(/\s+,/g, ",")
     .trim();
+}
+
+function getReinterpretationDirective(level, language = "en") {
+  const value = String(level);
+  const isEnglish = language === "en";
+
+  if (value === "0") {
+    return isEnglish
+      ? "Maintain the original composition, subject placement, and color logic with minimal reinterpretation."
+      : "원작의 구도, 인물 배치, 색채 논리를 최대한 유지하고 재해석은 최소화합니다.";
+  }
+  if (value === "20") {
+    return isEnglish
+      ? "Keep the source painting dominant while applying subtle character and background conversion."
+      : "원작 비중을 높게 유지하되 캐릭터와 배경 전환을 절제해 반영합니다.";
+  }
+  if (value === "40") {
+    return isEnglish
+      ? "Preserve most source identity while adding visible character and background reinterpretation."
+      : "원작 정체성을 중심으로 유지하면서 캐릭터/배경 재해석을 분명하게 추가합니다.";
+  }
+  if (value === "70") {
+    return isEnglish
+      ? "Rebuild expression boldly around the selected character and background while preserving the source composition DNA."
+      : "원작 구도 DNA는 유지하되 선택한 캐릭터와 배경 중심으로 표현을 과감히 재구성합니다.";
+  }
+  return isEnglish
+    ? "Keep only the source motif and push a strong reinterpretation in character styling and environment."
+    : "원작 모티프만 남기고 캐릭터 스타일과 환경 연출의 재해석 강도를 높입니다.";
 }
 
 function buildSelectionLockClause(input) {
@@ -2141,6 +2164,57 @@ function enforceSelectionMatchInPrompt(prompt, input) {
   return normalizeOneLinePrompt(`${normalizedPrompt}, ${lockClause}`);
 }
 
+function buildLocalPromptResult(input) {
+  const isEnglish = input.language === "en";
+  const reinterpretationDirective = getReinterpretationDirective(input.reinterpretationLevel, input.language);
+  const finalPrompt = enforceSelectionMatchInPrompt(
+    [
+      `${input.masterpiece} by ${input.artist}`,
+      `keep the original composition DNA`,
+      `subject conversion: ${input.customSubject}`,
+      `subject style: ${input.subjectStyle}`,
+      `background conversion: ${input.backgroundStyle}`,
+      `color and lighting: ${input.colorLighting}`,
+      `texture and brushwork: ${input.textureBrushwork}`,
+      `mood and narrative: ${input.moodStory}`,
+      `symbolism: ${input.symbolism}`,
+      `camera/composition rule: ${input.compositionCamera}`,
+      reinterpretationDirective,
+      `negative constraints: ${input.negatives}`,
+      `aspect ratio ${input.aspectRatio}`,
+      QUALITY_DIRECTIVE
+    ].join(", "),
+    input
+  );
+
+  const detailHeader = isEnglish ? "[Detailed Prompt Guide]" : "[상세 프롬프트 가이드]";
+  const lines = [
+    finalPrompt,
+    "",
+    detailHeader,
+    isEnglish ? `- Source painting: ${input.masterpiece}` : `- 원본 명화: ${input.masterpiece}`,
+    isEnglish ? `- Artist: ${input.artist}` : `- 작가: ${input.artist}`,
+    isEnglish
+      ? `- Character reinterpretation: ${input.customSubject}`
+      : `- 캐릭터 재해석: ${input.customSubject}`,
+    isEnglish
+      ? `- Background reinterpretation: ${input.backgroundStyle}`
+      : `- 배경 재해석: ${input.backgroundStyle}`,
+    isEnglish ? `- Color/Lighting: ${input.colorLighting}` : `- 색감/조명: ${input.colorLighting}`,
+    isEnglish ? `- Texture: ${input.textureBrushwork}` : `- 텍스처: ${input.textureBrushwork}`,
+    isEnglish ? `- Mood/Narrative: ${input.moodStory}` : `- 분위기/서사: ${input.moodStory}`,
+    isEnglish ? `- Symbolism: ${input.symbolism}` : `- 상징 요소: ${input.symbolism}`,
+    isEnglish ? `- Reinterpretation policy: ${reinterpretationDirective}` : `- 재해석 정책: ${reinterpretationDirective}`,
+    isEnglish ? `- Aspect ratio lock: ${input.aspectRatio}` : `- 화면 비율 고정: ${input.aspectRatio}`,
+    isEnglish ? `- Quality directive: ${QUALITY_DIRECTIVE}` : `- 품질 지시문: ${QUALITY_DIRECTIVE}`
+  ];
+
+  return {
+    finalPrompt,
+    detailedPrompt: lines.join("\n")
+  };
+}
+
 function scrollToOutput() {
   if (!ui.outputSection) {
     return;
@@ -2161,38 +2235,22 @@ async function generatePrompt(event) {
 
   const payload = collectPayload();
 
-  if (!payload.promptApiKey) {
-    setStatus("Gemini API 키를 먼저 입력해 주세요.", "error");
-    setPromptKeyStatus("Gemini API 키가 비어 있습니다.", "error");
-    return;
-  }
-
-  if (!isLikelyValidGoogleKey(payload.promptApiKey)) {
-    setStatus("Gemini API 키 형식을 확인해 주세요. (AIza...)", "error");
-    setPromptKeyStatus("Gemini API 키 형식 오류", "error");
-    return;
-  }
-
-  if (!payload.model) {
-    setStatus("모델을 선택해 주세요.", "error");
-    return;
-  }
-
   setBusy(true);
-  setStatus("프롬프트를 생성하고 있습니다...");
+  setStatus("선택값 기반으로 로컬 프롬프트를 구성하고 있습니다...");
   ui.rawOutput.value = "";
-  ui.endpointBadge.textContent = "API: -";
+  ui.endpointBadge.textContent = "API: local-template";
+  state.latestCopyPrompt = "";
 
   try {
-    const data = await generatePromptWithGemini({ input: payload, model: payload.model });
-    const promptText = String(data.prompt || "").trim();
+    const data = buildLocalPromptResult(payload);
+    const promptText = String(data.detailedPrompt || "").trim();
     ui.rawOutput.value = promptText;
-    ui.endpointBadge.textContent = `API: ${data.endpoint}`;
+    state.latestCopyPrompt = String(data.finalPrompt || "").trim();
 
     const copied = await copyPromptToClipboard(
-      promptText,
+      state.latestCopyPrompt || promptText,
       true,
-      "프롬프트 생성 완료. 상세 프롬프트가 자동으로 복사되었습니다."
+      "프롬프트 생성 완료. 한 줄 프롬프트가 자동으로 복사되었습니다."
     );
     scrollToOutput();
 
@@ -2236,7 +2294,8 @@ async function copyPromptToClipboard(text, autoCopied = false, copiedMessage = "
 }
 
 async function copyRawPrompt() {
-  await copyPromptToClipboard(ui.rawOutput.value, false, "프롬프트가 클립보드에 복사되었습니다.");
+  const textForCopy = state.latestCopyPrompt || String(ui.rawOutput.value || "").trim();
+  await copyPromptToClipboard(textForCopy, false, "프롬프트가 클립보드에 복사되었습니다.");
 }
 
 function resetGeneratedImageView() {
@@ -2272,7 +2331,7 @@ async function requestImageGeneration({ imageApiKey, imageModel, prompt, aspectR
 }
 
 function getImagePrompt() {
-  return String(ui.rawOutput.value || "").trim();
+  return String(state.latestCopyPrompt || ui.rawOutput.value || "").trim();
 }
 
 async function generateImageFromPrompt() {
@@ -2325,9 +2384,8 @@ function bindEvents() {
   ui.form.addEventListener("submit", generatePrompt);
   ui.generateImageRawButton?.addEventListener("click", generateImageFromPrompt);
   ui.copyRawButton?.addEventListener("click", copyRawPrompt);
-  ui.refreshModelsButton.addEventListener("click", loadModels);
-  ui.savePromptApiKeyButton?.addEventListener("click", savePromptApiKey);
-  ui.clearPromptApiKeyButton?.addEventListener("click", clearPromptApiKey);
+  ui.saveImageApiKeyButton?.addEventListener("click", saveImageApiKey);
+  ui.clearImageApiKeyButton?.addEventListener("click", clearImageApiKey);
   ui.randomizeButton.addEventListener("click", randomizeCombination);
 
   ui.masterpieceSelect.addEventListener("change", () => {
@@ -2361,15 +2419,14 @@ function bindEvents() {
 function initialize() {
   initSelectors();
   initImageModelOptions();
-  loadSavedPromptApiKey();
+  loadSavedImageApiKey();
   bindEvents();
-  ui.promptModelLabel.textContent = "프롬프트 모델 (기본: gemini-3-pro-preview)";
   syncSelectedMasterpieceCard(false);
   refreshAutoPlan();
   updateReinterpretationUI(ui.reinterpretationInput.value);
   setImageBusy(false);
   setGeneratedImageStatus("프롬프트로 이미지를 생성할 수 있습니다. (이미지 모델 기본: gemini-3-pro-image-preview)");
-  loadModels();
+  setStatus("선택값 기반 로컬 프롬프트 생성 준비 완료");
 }
 
 initialize();

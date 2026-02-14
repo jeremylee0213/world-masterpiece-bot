@@ -647,9 +647,20 @@ button:disabled {
   margin: 0;
 }
 
+.copy-guide {
+  margin: -4px 0 6px;
+  line-height: 1.45;
+}
+
+.copy-guide strong {
+  color: #92400e;
+}
+
 .image-control-row {
   justify-content: flex-start;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .image-model-select {
@@ -657,8 +668,12 @@ button:disabled {
 }
 
 .image-api-input {
-  min-width: 250px;
-  flex: 1 1 280px;
+  min-width: 260px;
+  flex: 1 1 320px;
+}
+
+.image-control-row .ghost-btn {
+  white-space: nowrap;
 }
 
 .image-generate-btn {
